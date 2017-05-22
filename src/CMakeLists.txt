@@ -1226,6 +1226,16 @@ if(XERCES_USE_FILEMGR_WINDOWS)
   list(APPEND libxerces_c_HEADERS ${winfmgr_headers})
 endif()
 
+# Windows resource.  With some additional work to clean it up, it
+# might be possible to use with Cygwin and MinGW.
+if(MSVC)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/xercesc/util/MsgLoaders/Win32/Version.rc.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/xercesc/util/MsgLoaders/Win32/Version.rc"
+    @ONLY)
+  list(APPEND libxerces_c_RESOURCES "${CMAKE_CURRENT_BINARY_DIR}/xercesc/util/MsgLoaders/Win32/Version.rc")
+endif()
+
 # Definitions required for building
 add_definitions(
   -DHAVE_CONFIG_H
@@ -1242,17 +1252,40 @@ include_directories(
 add_custom_target(xerces-c-headers SOURCES ${libxerces_c_HEADERS})
 set_target_properties(xerces-c-headers PROPERTIES FOLDER "Library")
 
-add_library(xerces-c ${libxerces_c_SOURCES})
+add_library(xerces-c
+  ${libxerces_c_SOURCES}
+  ${libxerces_c_RESOURCES})
 target_link_libraries(xerces-c ${libxerces_c_DEPS})
-set_target_properties(xerces-c PROPERTIES SOVERSION ${LIB_INTERFACE_VER_D})
-set_target_properties(xerces-c PROPERTIES FOLDER "Library")
-if(NOT CYGWIN)
+if(MSVC)
+  # Add configuration-specific library name to resource file.
+  target_compile_definitions(xerces-c PRIVATE "XERCES_DLL_NAME=\"$<TARGET_FILE_NAME:xerces-c>\\0\"")
+  # Different naming for Windows than for Unix builds for backward
+  # compatibility with the existing project files.
+  set_target_properties(xerces-c PROPERTIES OUTPUT_NAME "xerces-c_${LIB_INTERFACE_VER_U_MAJOR}")
+  set_target_properties(xerces-c PROPERTIES RUNTIME_OUTPUT_NAME "xerces-c_${LIB_INTERFACE_VER_U}")
+elseif(UNIX)
+  # For strict libtool compatibility on Unix.  It's a horrible hack to
+  # set the version in the filename, and create the symlink at install
+  # time.  Note: could be dropped when the SONAME is updated and
+  # libtool compatibility is no longer required.
+  set_target_properties(xerces-c PROPERTIES OUTPUT_NAME "xerces-c-${LIB_INTERFACE_VER_D}")
+  file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/InstallLibrarySymlink.cmake"
+    CONTENT "execute_process(COMMAND ln -sf \"$<TARGET_FILE_NAME:xerces-c>\" \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_LIBDIR}/libxerces-c.so\")")
+  install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/InstallLibrarySymlink.cmake")
+else()
+  # Not used for the common cases, though this would be the default if
+  # not for libtool compatibility.
+  set_target_properties(xerces-c PROPERTIES SOVERSION ${LIB_INTERFACE_VER_D})
+  if(NOT CYGWIN)
     # This property causes shared libraries on Linux to have the full
     # version encoded into their final filename.  We disable this on
     # Cygwin because it causes xerces-c-${XERCES_C_FULL_VERSION}.dll
     # to be created when xerces-c.dll seems to be the default.
     set_target_properties(xerces-c PROPERTIES VERSION ${LIB_INTERFACE_VER_D})
+  endif()
 endif()
+set_target_properties(xerces-c PROPERTIES FOLDER "Library")
 
 if(WIN32)
   set(xerces_config_dir "cmake")

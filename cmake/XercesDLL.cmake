@@ -56,3 +56,8 @@ foreach(item IN LISTS icu_verinfo)
     "\\2" lib_value "${item}")
   set(LIB_${lib_key} "${lib_value}")
 endforeach()
+
+string(REGEX REPLACE "^([0-9]+)_.*"
+  "\\1"
+  LIB_INTERFACE_VER_U_MAJOR
+  "${LIB_INTERFACE_VER_U}")
